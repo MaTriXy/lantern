@@ -17,75 +17,72 @@
 package github.nisrulz.lanternproject;
 
 import android.Manifest;
-import android.content.pm.PackageManager;
+import android.annotation.SuppressLint;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
-import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.SwitchCompat;
 import android.widget.CompoundButton;
 import android.widget.Toast;
 import github.nisrulz.lantern.Lantern;
+import java.util.concurrent.TimeUnit;
 
 public class MainActivity extends AppCompatActivity {
 
-  private final int REQUEST_CODE = 100;
+    private final int REQUEST_CODE = 100;
 
-  @Override
-  protected void onCreate(@Nullable Bundle savedInstanceState) {
-    super.onCreate(savedInstanceState);
-    setContentView(R.layout.activity_main);
+    private Lantern lantern;
 
-    SwitchCompat toggle = (SwitchCompat) findViewById(R.id.switch_flash);
+    @Override
+    protected void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
 
-    if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
-        == PackageManager.PERMISSION_GRANTED) {
-      Lantern.getInstance().init(this);
-    }
-    else {
-      ActivityCompat.requestPermissions(this, new String[] { Manifest.permission.CAMERA },
-          REQUEST_CODE);
-    }
+        SwitchCompat toggle = findViewById(R.id.switch_flash);
+        lantern = new Lantern(this)
+                .checkAndRequestSystemPermission()
+                .observeLifecycle(this);
 
-    // Check for permission
-    final boolean hasSystemWritePermission = Lantern.getInstance().checkSystemWritePermission(this);
-    // Request for permission if not yet granted
-    if (!hasSystemWritePermission) {
-      Lantern.getInstance().requestSystemWritePermission(this);
-    }
-
-    toggle.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-      @Override
-      public void onCheckedChanged(CompoundButton compoundButton, boolean b) {
-        if (b) {
-          // true
-          Lantern.getInstance().turnOnFlashlight(MainActivity.this);
-          Lantern.getInstance().setDisplayToFullBright(MainActivity.this);
+        // Init Lantern by calling `init()`, which also check if camera permission is granted + camera feature exists
+        // In case permission is not granted, request for the permission and retry by calling `init()` method
+        // NOTE: In case camera feature is does not exist, `init()` will return `false` and Lantern will not have
+        // torch functionality but only screen based features
+        if (!lantern.initTorch()) {
+            // Request if permission is not granted
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, REQUEST_CODE);
         }
-        else {
-          //false
-          Lantern.getInstance().turnOffFlashlight(MainActivity.this);
-          Lantern.getInstance().resetDisplayToAutoBright(MainActivity.this);
-        }
-      }
-    });
-  }
 
-  @Override
-  public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
-      @NonNull int[] grantResults) {
-    super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-
-    if (requestCode == REQUEST_CODE) {
-      if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
-          == PackageManager.PERMISSION_GRANTED) {
-        Lantern.getInstance().init(this);
-      }
-      else {
-        Toast.makeText(MainActivity.this, "Camera Permission Denied!", Toast.LENGTH_SHORT).show();
-      }
+        toggle.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton compoundButton, boolean state) {
+                if (state) {
+                    // true
+                    lantern.alwaysOnDisplay(true)
+                            .fullBrightDisplay(true)
+                            .enableTorchMode(true)
+                            .pulse(true).withDelay(1, TimeUnit.SECONDS);
+                } else {
+                    //false
+                    lantern.alwaysOnDisplay(false)
+                            .fullBrightDisplay(false)
+                            .enableTorchMode(false).pulse(false);
+                }
+            }
+        });
     }
-  }
+
+    @SuppressLint("MissingPermission")
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+            @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        if (requestCode == REQUEST_CODE) {
+            if (!lantern.initTorch()) {
+                Toast.makeText(MainActivity.this, "Camera Permission Denied!", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
 }

@@ -16,128 +16,144 @@
 
 package github.nisrulz.lantern;
 
+import static github.nisrulz.lantern.Utils.isMarshmallowAndAbove;
+
 import android.Manifest;
 import android.app.Activity;
-import android.content.Context;
-import android.content.Intent;
-import android.content.pm.PackageManager;
-import android.net.Uri;
-import android.os.Build;
-import android.provider.Settings;
+import android.arch.lifecycle.Lifecycle.Event;
+import android.arch.lifecycle.LifecycleObserver;
+import android.arch.lifecycle.LifecycleOwner;
+import android.arch.lifecycle.OnLifecycleEvent;
+import android.os.Handler;
 import android.support.annotation.RequiresPermission;
-import android.view.Window;
-import android.view.WindowManager;
+import java.lang.ref.WeakReference;
+import java.util.concurrent.TimeUnit;
 
-public class Lantern {
+public class Lantern implements LifecycleObserver {
 
-  private boolean isFlashOn = false;
-  private PostMarshmallow postMarshmallow;
-  private PreMarshmallow preMarshmallow;
+    private WeakReference<Activity> activityWeakRef;
 
-  private Lantern() {
-  }
+    private final DisplayLightController displayLightController;
 
-  private static class LazyHolder {
-    static final Lantern INSTANCE = new Lantern();
-  }
+    private FlashController flashController;
 
-  public static Lantern getInstance() {
-    return LazyHolder.INSTANCE;
-  }
+    private final Handler handler;
 
-  //---------------------** Flashlight Utilities **---------------------//
+    private boolean isFlashOn = false;
 
-  @RequiresPermission(Manifest.permission.CAMERA)
-  public void init(Context context) {
-    if (checkIfCameraFeatureExists(context)) {
-      if (isMarshmallowAndAbove()) {
-        postMarshmallow = new PostMarshmallow(context);
-      } else {
-        preMarshmallow = new PreMarshmallow();
-      }
+    private long pulseTime = 1000;
+
+    private final Utils utils;
+
+    private final Runnable pulseRunnable = new Runnable() {
+        @Override
+        public void run() {
+            enableTorchMode(!isFlashOn);
+            handler.postDelayed(pulseRunnable, pulseTime);
+        }
+    };
+
+
+    public Lantern(Activity activity) {
+        this.activityWeakRef = new WeakReference<>(activity);
+        utils = new Utils();
+        handler = new Handler();
+        displayLightController = new DisplayLightControllerImpl(activity);
     }
-  }
 
-  public void turnOnFlashlight(Context context) {
-    if (!isFlashOn && checkForCameraPermission(context)) {
-      if (isMarshmallowAndAbove()) {
-        postMarshmallow.turnOn();
-      } else {
-        preMarshmallow.turnOn();
-      }
-      isFlashOn = true;
+    public Lantern alwaysOnDisplay(boolean enabled) {
+        if (enabled) {
+            displayLightController.enableAlwaysOnMode();
+        } else {
+            displayLightController.disableAlwaysOnMode();
+        }
+        return this;
     }
-  }
 
-  public void turnOffFlashlight(Context context) {
-    if (isFlashOn && checkForCameraPermission(context)) {
-      if (isMarshmallowAndAbove()) {
-        postMarshmallow.turnOff();
-      } else {
-        preMarshmallow.turnOff();
-      }
-      isFlashOn = false;
+    public Lantern autoBright(boolean enabled) {
+        if (enabled) {
+            displayLightController.enableAutoBrightMode();
+        } else {
+            displayLightController.disableAutoBrightMode();
+        }
+        return this;
     }
-  }
 
-  //---------------------** Display Utilities **---------------------//
-
-  public void clearKeepDisplayOn(Activity activity) {
-    activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-  }
-
-  public void keepDisplayOn(Activity activity) {
-    activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-  }
-
-  public void setDisplayToFullBright(Activity activity) {
-    if (checkSystemWritePermission(activity)) {
-      Settings.System.putInt(activity.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS_MODE,
-          Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL);
-
-      Window window = activity.getWindow();
-      WindowManager.LayoutParams layoutParams = window.getAttributes();
-      layoutParams.screenBrightness = 100 / 100.0f;
-      window.setAttributes(layoutParams);
+    public Lantern checkAndRequestSystemPermission() {
+        displayLightController.requestSystemWritePermission();
+        return this;
     }
-  }
 
-  public void resetDisplayToAutoBright(Activity activity) {
-    if (checkSystemWritePermission(activity)) {
-      Settings.System.putInt(activity.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS_MODE,
-          Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC);
+    @OnLifecycleEvent(Event.ON_DESTROY)
+    public void cleanup() {
+        handler.removeCallbacks(pulseRunnable);
+        displayLightController.cleanup();
+        this.activityWeakRef = null;
     }
-  }
 
-  public boolean checkSystemWritePermission(Activity activity) {
-    boolean retVal = true;
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      retVal = Settings.System.canWrite(activity);
+    public Lantern enableTorchMode(boolean enabled) {
+        if (activityWeakRef != null) {
+            if (enabled) {
+                if (!isFlashOn && utils.checkForCameraPermission(activityWeakRef.get().getApplicationContext())) {
+                    flashController.on();
+                    isFlashOn = true;
+                }
+            } else {
+                if (isFlashOn && utils.checkForCameraPermission(activityWeakRef.get().getApplicationContext())) {
+                    flashController.off();
+                    isFlashOn = false;
+                }
+            }
+        } else {
+            flashController.off();
+            isFlashOn = false;
+        }
+        return this;
     }
-    return retVal;
-  }
 
-  public void requestSystemWritePermission(Activity activity) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      Intent intent = new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS);
-      intent.setData(Uri.parse("package:" + activity.getPackageName()));
-      activity.startActivity(intent);
+    public Lantern fullBrightDisplay(boolean enabled) {
+        if (enabled) {
+            displayLightController.enableFullBrightMode();
+        } else {
+            displayLightController.disableFullBrightMode();
+        }
+        return this;
     }
-  }
 
-  //---------------------** Misc Utilities **---------------------//
+    @RequiresPermission(Manifest.permission.CAMERA)
+    public boolean initTorch() {
+        if (activityWeakRef != null) {
+            if (utils.checkIfCameraFeatureExists(activityWeakRef.get()) && utils
+                    .checkForCameraPermission(activityWeakRef.get())) {
+                if (isMarshmallowAndAbove()) {
+                    flashController = new PostMarshmallow(activityWeakRef.get());
+                } else {
+                    flashController = new PreMarshmallow();
+                }
+                return true;
+            }
+        }
+        return false;
+    }
 
-  private boolean isMarshmallowAndAbove() {
-    return Build.VERSION.SDK_INT >= Build.VERSION_CODES.M;
-  }
+    public Lantern observeLifecycle(LifecycleOwner lifecycleOwner) {
+        // Subscribe to listening lifecycle
+        lifecycleOwner.getLifecycle().addObserver(this);
 
-  private boolean checkForCameraPermission(Context context) {
-    return context.checkCallingOrSelfPermission(Manifest.permission.CAMERA)
-        == PackageManager.PERMISSION_GRANTED;
-  }
+        return this;
+    }
 
-  // Method : Check if the device has a Flash as hardware or not
-  private boolean checkIfCameraFeatureExists(Context context) {
-    return context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_FLASH);
-  }
+    public Lantern pulse(boolean enabled) {
+        if (enabled) {
+            handler.postDelayed(pulseRunnable, pulseTime);
+        } else {
+            handler.removeCallbacks(pulseRunnable);
+        }
+        return this;
+    }
+
+    public Lantern withDelay(long time, final TimeUnit timeUnit) {
+        this.pulseTime = TimeUnit.MILLISECONDS.convert(time, timeUnit);
+        return this;
+    }
 }

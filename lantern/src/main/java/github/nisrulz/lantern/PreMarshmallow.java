@@ -17,41 +17,65 @@
 package github.nisrulz.lantern;
 
 import android.hardware.Camera;
+import android.hardware.Camera.CameraInfo;
 
+/**
+ * The type Pre marshmallow.
+ */
 @SuppressWarnings("deprecation")
-class PreMarshmallow {
+class PreMarshmallow implements FlashController {
 
-  private final Camera camera;
+    private Camera camera;
 
-  public PreMarshmallow() {
-    camera = Camera.open();
-  }
+    @Override
+    public void off() {
+        try {
+            if (camera != null) {
+                Camera.Parameters p = camera.getParameters();
+                p.setFlashMode(Camera.Parameters.FLASH_MODE_OFF);
+                camera.setParameters(p);
+                camera.stopPreview();
+                camera.release();
+                camera = null;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
 
-  void turnOn() {
-    try {
-
-      if (camera != null) {
-        Camera.Parameters params = camera.getParameters();
-        params.setFlashMode(Camera.Parameters.FLASH_MODE_TORCH);
-        camera.setParameters(params);
-        camera.startPreview();
-      }
-    } catch (Exception e) {
-      e.printStackTrace();
     }
-  }
 
-  void turnOff() {
-    try {
-      if (camera != null) {
-        Camera.Parameters p = camera.getParameters();
-        p.setFlashMode(Camera.Parameters.FLASH_MODE_OFF);
-        camera.setParameters(p);
-        camera.stopPreview();
-        camera.release();
-      }
-    } catch (Exception e) {
-      e.printStackTrace();
+    @Override
+    public void on() {
+        try {
+            off();
+            if (camera == null) {
+                try {
+                    camera = Camera.open(getCameraId());
+                } catch (RuntimeException ex) {
+                    System.out.println("Runtime error while opening camera!");
+                }
+            }
+            if (camera != null) {
+                Camera.Parameters params = camera.getParameters();
+                params.setFlashMode(Camera.Parameters.FLASH_MODE_TORCH);
+                camera.setParameters(params);
+                camera.startPreview();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
     }
-  }
+
+    private int getCameraId() {
+        int numberOfCameras = Camera.getNumberOfCameras();
+        for (int i = 0; i < numberOfCameras; i++) {
+            CameraInfo info = new CameraInfo();
+            Camera.getCameraInfo(i, info);
+            if (info.facing == CameraInfo.CAMERA_FACING_BACK) {
+                return i;
+            }
+        }
+        return 0;
+    }
 }

@@ -20,38 +20,50 @@ import android.annotation.TargetApi;
 import android.content.Context;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraManager;
-import android.os.Build;
+import android.os.Build.VERSION_CODES;
 
-class PostMarshmallow {
-  private final CameraManager mCameraManager;
-  private String mCameraId;
+class PostMarshmallow implements FlashController {
 
-  @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-  public PostMarshmallow(Context context) {
-    mCameraManager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
-    try {
+    private String cameraId;
 
-      mCameraId = mCameraManager.getCameraIdList()[0];
-    } catch (CameraAccessException e) {
-      e.printStackTrace();
+    private final CameraManager cameraManager;
+
+    @TargetApi(VERSION_CODES.LOLLIPOP)
+    PostMarshmallow(Context context) {
+        cameraManager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
+        try {
+
+            if (cameraManager != null) {
+                cameraId = cameraManager.getCameraIdList()[0];
+            }
+
+        } catch (CameraAccessException e) {
+            e.printStackTrace();
+        }
     }
-  }
 
-  @TargetApi(Build.VERSION_CODES.M)
-  void turnOn() {
-    try {
-      mCameraManager.setTorchMode(mCameraId, true);
-    } catch (Exception e) {
-      e.printStackTrace();
+    @TargetApi(VERSION_CODES.M)
+    @Override
+    public void off() {
+        try {
+            if (cameraManager != null) {
+                cameraManager.setTorchMode(cameraId, false);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
-  }
 
-  @TargetApi(Build.VERSION_CODES.M)
-  void turnOff() {
-    try {
-      mCameraManager.setTorchMode(mCameraId, false);
-    } catch (Exception e) {
-      e.printStackTrace();
+    @TargetApi(VERSION_CODES.M)
+    @Override
+    public void on() {
+        try {
+            if (cameraManager != null) {
+                cameraManager.setTorchMode(cameraId, true);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
     }
-  }
 }

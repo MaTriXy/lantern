@@ -16,19 +16,23 @@
 
 package github.nisrulz.lantern;
 
-import static org.junit.Assert.*;
+interface DisplayLightController {
 
-import org.junit.*;
+    boolean checkSystemWritePermission();
 
-/**
- * Example local unit test, which will execute on the development machine (host).
- *
- * @see <a href="http://d.android.com/tools/testing">Testing documentation</a>
- */
-public class ExampleUnitTest {
+    void cleanup();
 
-    @Test
-    public void addition_isCorrect() throws Exception {
-        assertEquals(4, 2 + 2);
-    }
+    void disableAlwaysOnMode();
+
+    void disableAutoBrightMode();
+
+    void disableFullBrightMode();
+
+    void enableAlwaysOnMode();
+
+    void enableAutoBrightMode();
+
+    void enableFullBrightMode();
+
+    void requestSystemWritePermission();
 }
